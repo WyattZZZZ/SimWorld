@@ -59,7 +59,7 @@ citygen:
 
 assets_rp:
   input_description_map: "description_map.json"
-  input_sample_dataset: "building_images"
+  input_sample_dataset: "asset_images"
   output_dir: "output_rp"
   env_description_retrieval_model: "paraphrase-MiniLM-L6-v2"
   assets_retrieval_model: "openai/clip-vit-large-patch14-336"
