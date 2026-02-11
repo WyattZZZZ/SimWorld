@@ -33,7 +33,9 @@ setup(
         'pillow',
         'sentence-transformers',
         'faiss-cpu',
-        'openai'
+        'openai',
+        'google-genai',
+        'jupyter'
     ],
     extras_require={
         'dev': [

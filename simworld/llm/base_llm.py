@@ -6,6 +6,8 @@ import time
 from typing import Optional
 
 import openai
+from google import genai
+from google.genai import types
 
 from simworld.utils.logger import Logger
 
@@ -49,34 +51,42 @@ class BaseLLM(metaclass=LLMMetaclass):
         # Get API key from environment if not provided
         openai_api_key = os.getenv('OPENAI_API_KEY')
         openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+        gemini_api_key = os.getenv('GEMINI_API_KEY')
 
         self.provider = provider
 
-        if provider == 'openai':
+        if self.provider == 'openai':
             if not openai_api_key:
                 raise ValueError('No OpenAI API key provided. Please set OPENAI_API_KEY environment variable.')
             self.api_key = openai_api_key
-        elif provider == 'openrouter':
+        elif self.provider == 'openrouter':
             if not openrouter_api_key:
                 raise ValueError('No OpenRouter API key provided. Please set OPENROUTER_API_KEY environment variable.')
             self.api_key = openrouter_api_key
-        elif provider == 'local':
-            # For local models (vLLM, etc.), API key is not required
+        elif self.provider == 'local':
             self.api_key = os.getenv('OPENAI_API_KEY', 'not-needed')
+        elif self.provider == 'google':
+            if not gemini_api_key:
+                raise ValueError('No Gemini API key provided. Please set GEMINI_API_KEY environment variable.')
+            self.api_key = gemini_api_key
         else:
-            raise ValueError(f'Not supported provider: {provider}')
+            raise ValueError(f'Not supported provider: {self.provider}')
 
         if url == 'None':
             url = None
 
         try:
-            self.client = openai.OpenAI(
-                api_key=self.api_key,
-                base_url=url,
-            )
+            if self.provider == 'google':
+                self.client = genai.Client(
+                    api_key=self.api_key,
+                )
+            else:
+                self.client = openai.OpenAI(
+                    api_key=self.api_key,
+                    base_url=url,
+                )
             # Validate the API key for cloud providers
-            # Skip validation for local providers as they may not implement models.list()
-            if provider != 'local':
+            if self.provider != 'local':
                 self.client.models.list()
         except Exception as e:
             raise ValueError(f'Failed to initialize OpenAI client: {str(e)}')
@@ -107,6 +117,7 @@ class BaseLLM(metaclass=LLMMetaclass):
             Generated text response or None if generation fails.
         """
         start_time = time.time()
+        print(f'start_time: {start_time}')
         try:
             response = self._generate_text_with_retry(
                 system_prompt,
@@ -117,7 +128,7 @@ class BaseLLM(metaclass=LLMMetaclass):
                 **kwargs,
             )
             return response, time.time() - start_time
-        except Exception:
+        except Exception as e:
             return None, time.time() - start_time
 
     def _generate_text_with_retry(
@@ -129,15 +140,37 @@ class BaseLLM(metaclass=LLMMetaclass):
         top_p: float = None,
         **kwargs,
     ) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': user_prompt},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            **kwargs,
-        )
-        return response.choices[0].message.content
+        print(f'Generating text with model -- {self.model_name}')
+        for time in range(4):
+            try:
+                if self.provider == 'google':
+                    contents = []
+                    contents.append(system_prompt + '\n' + user_prompt)
+                    print(f'Contents: {contents}')
+
+                    # Create the prompt with text and multiple images
+                    response = self.client.models.generate_content(
+
+                        model=self.model_name,
+                        contents=contents
+                    )
+                    print(f'Response: {response}')
+                    return response.text
+
+                else:
+                    response = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[
+                            {'role': 'system', 'content': system_prompt},
+                            {'role': 'user', 'content': user_prompt},
+                        ],
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                        **kwargs,
+                    )
+                    return response.choices[0].message.content
+            except Exception as e:
+                print(f'Failed to generate text: {str(e)}')
+                if time == 3:
+                    raise e

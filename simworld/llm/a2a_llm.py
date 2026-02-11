@@ -39,6 +39,8 @@ class A2ALLM(BaseLLM):
             return self._generate_instructions_openai(system_prompt, user_prompt, images, max_tokens, temperature, top_p, response_format)
         elif self.provider == 'openrouter':
             return self._generate_instructions_openrouter(system_prompt, user_prompt, images, max_tokens, temperature, top_p, response_format)
+        elif self.provider == 'gemini':
+            return self._generate_instructions_gemini(system_prompt, user_prompt, images, max_tokens, temperature, top_p, response_format)
         else:
             raise ValueError(f'Invalid provider: {self.provider}')
 
@@ -68,6 +70,26 @@ class A2ALLM(BaseLLM):
         except Exception as e:
             self.logger.error(f'Error in generate_instructions_openai: {e}')
             action_json = None
+
+        return action_json, time.time() - start_time
+
+    def _generate_instructions_gemini(self, system_prompt, user_prompt, images=[], max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+        start_time = time.time()
+        contents = []
+        contents.append(system_prompt + '\n' + user_prompt)
+        for image in images:
+            img_data = Image.to_bytes(image)
+            contents.append(types.Part.from_bytes(data=img_data, mime_type='image/jpeg'))
+        
+
+        # Create the prompt with text and multiple images
+        response = self.client.models.generate_content(
+
+            model=self.model_name,
+            contents=contents
+        )
+
+        action_json = response.text
 
         return action_json, time.time() - start_time
 

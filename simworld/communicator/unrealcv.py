@@ -1050,11 +1050,17 @@ class UnrealCV(object):
                     cmd = f'vget /camera/{cam_id}/{viewmode} npy'
                     with self.lock:
                         res = self.client.request(cmd)
+                    # Validate response type
+                    if isinstance(res, str):
+                        raise ValueError(f'UnrealCV error for camera {cam_id} ({viewmode}): {res}')
                     image = self._decode_npy(res)
                 else:
                     cmd = f'vget /camera/{cam_id}/{viewmode} png'
                     with self.lock:
                         res = self.client.request(cmd)
+                    # Validate response type
+                    if isinstance(res, str):
+                        raise ValueError(f'UnrealCV error for camera {cam_id} ({viewmode}): {res}')
                     image = self._decode_png(res)
             elif mode == 'file':  # save image to file and read it
                 img_path = os.path.join(os.getcwd(), f'{cam_id}-{viewmode}.png')
@@ -1067,6 +1073,9 @@ class UnrealCV(object):
                 cmd = f'vget /camera/{cam_id}/{viewmode} bmp'
                 with self.lock:
                     res = self.client.request(cmd)
+                # Validate response type
+                if isinstance(res, str):
+                    raise ValueError(f'UnrealCV error for camera {cam_id} ({viewmode}): {res}')
                 # print(type(res), len(res) if hasattr(res, '__len__') else res)
                 image = self._decode_bmp(res)
 
@@ -1081,18 +1090,21 @@ class UnrealCV(object):
             return image
 
         except Exception as e:
-            print(f'Error reading image: {str(e)}')
+            self.logger.error(f'Failed to get image from camera {cam_id} (viewmode={viewmode}, mode={mode}): {str(e)}')
+            # Return black image as fallback
             return np.zeros((480, 640, 3), dtype=np.uint8)
 
     def _decode_npy(self, res):
         """Decode NPY image.
 
         Args:
-            res: NPY image.
+            res: NPY image (bytes).
 
         Returns:
             Decoded image.
         """
+        if not isinstance(res, (bytes, bytearray)):
+            raise TypeError(f'Expected bytes for NPY decoding, got {type(res).__name__}')
         image = np.load(BytesIO(res))
         eps = 1e-6
         depth_log = np.log(image + eps)
@@ -1113,11 +1125,13 @@ class UnrealCV(object):
         """Decode PNG image.
 
         Args:
-            res: PNG image.
+            res: PNG image (bytes).
 
         Returns:
             Decoded image.
         """
+        if not isinstance(res, (bytes, bytearray)):
+            raise TypeError(f'Expected bytes for PNG decoding, got {type(res).__name__}')
         img = np.asarray(PIL.Image.open(BytesIO(res)))
         img = img[:, :, :-1]  # delete alpha channel
         img = img[:, :, ::-1]  # transpose channel order
