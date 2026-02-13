@@ -1,4 +1,3 @@
-"""Local Planner (Activity to Action) LLM class for handling interactions with language models."""
 import base64
 import io
 import json
@@ -9,6 +8,8 @@ import cv2
 import numpy as np
 from PIL import Image
 from pydantic import BaseModel
+from google import genai
+from google.genai import types
 
 from simworld.utils.logger import Logger
 
@@ -39,7 +40,7 @@ class A2ALLM(BaseLLM):
             return self._generate_instructions_openai(system_prompt, user_prompt, images, max_tokens, temperature, top_p, response_format)
         elif self.provider == 'openrouter':
             return self._generate_instructions_openrouter(system_prompt, user_prompt, images, max_tokens, temperature, top_p, response_format)
-        elif self.provider == 'gemini':
+        elif self.provider == 'google':
             return self._generate_instructions_gemini(system_prompt, user_prompt, images, max_tokens, temperature, top_p, response_format)
         else:
             raise ValueError(f'Invalid provider: {self.provider}')
@@ -78,8 +79,15 @@ class A2ALLM(BaseLLM):
         contents = []
         contents.append(system_prompt + '\n' + user_prompt)
         for image in images:
-            img_data = Image.to_bytes(image)
-            contents.append(types.Part.from_bytes(data=img_data, mime_type='image/jpeg'))
+            # Ensure image is PIL Image
+            if isinstance(image, np.ndarray):
+                image = Image.fromarray(image)
+            
+            img_byte_arr = io.BytesIO()
+            image.save(img_byte_arr, format='JPEG')
+            img_bytes = img_byte_arr.getvalue()
+            
+            contents.append(types.Part.from_bytes(data=img_bytes, mime_type='image/jpeg'))
         
 
         # Create the prompt with text and multiple images

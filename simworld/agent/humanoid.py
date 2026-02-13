@@ -33,6 +33,18 @@ class Humanoid(BaseAgent):
         self.communicator = communicator
         self.config = config
 
+        # If a communicator is provided, validate that the assigned camera_id exists in UE.
+        # If not valid, attempt to find the camera bound to this actor and update camera_id.
+        try:
+            if self.communicator is not None:
+                ue_name = self.communicator.get_humanoid_name(self.id)
+                found_cam = self.communicator.find_camera_id_for_actor(ue_name)
+                if found_cam is not None:
+                    self.camera_id = found_cam
+        except Exception:
+            # non-fatal — keep assigned camera_id
+            pass
+
         self.scooter_id = None
 
     def __str__(self):

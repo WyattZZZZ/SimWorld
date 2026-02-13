@@ -16,6 +16,10 @@ from simworld.utils.data_importer import DataImporter
 from simworld.utils.logger import Logger
 
 
+
+from simworld.communicator.communicator import Communicator
+
+
 class AssetsRetrieverPlacer:
     """Assets Retrieval and Placement ability.
 
@@ -23,13 +27,14 @@ class AssetsRetrieverPlacer:
     based on the natural language prompts.
     """
 
-    def __init__(self, config: Config, input_dir: str, env_description_retrieval_model_name: str = None):
+    def __init__(self, config: Config, input_dir: str, env_description_retrieval_model_name: str = None, communicator: Communicator = None):
         """Initialize function call.
 
         Args:
             config: the configuration user provide.
             input_dir: the directory to load the input data.
             env_description_retrieval_model_name: the name of the environment description retrieval model.
+            communicator: Optional Communicator instance for real-time asset placement.
         """
         self.config = config
         self.env_description_retrieval_model_name = env_description_retrieval_model_name if env_description_retrieval_model_name else config['assets_rp.env_description_retrieval_model']
@@ -37,6 +42,7 @@ class AssetsRetrieverPlacer:
         self.data_importer = DataImporter(config)
         self.input_dir = input_dir
         self.city_generator = self.data_importer.import_city_data(input_dir)
+        self.communicator = communicator
 
         self.logger = Logger.get_logger('AssetsRP')
 
@@ -109,3 +115,71 @@ class AssetsRetrieverPlacer:
             self.logger.error('No target assets or target positions found')
             return
         place_target_asset(target_assets, target_positions, output_dir or self.config['assets_rp.output_dir'])
+
+
+    def place_asset(self, asset_path: str, location: tuple, rotation: tuple = (0, 0, 0), scale: tuple = (1, 1, 1)):
+        """Directly place an asset in the simulation using the provided Communicator.
+        
+        Args:
+            asset_path: The full path to the blueprint asset (e.g., /Game/ModularSciFI/SM_Apple/SM_Apple.SM_Apple)
+            location: Tuple of (x, y, z) coordinates.
+            rotation: Tuple of (pitch, yaw, roll) rotation values. Defaults to (0, 0, 0).
+            scale: Tuple of (x, y, z) scale values. Defaults to (1, 1, 1).
+        """
+        if not self.communicator:
+            self.logger.error("Cannot place asset: No Communicator instance provided.")
+            return False
+
+        # Generate a unique name for the asset
+        import time
+        timestamp = int(time.time() * 1000)
+        # Extract a simple name from the path (e.g. SM_Apple)
+        base_name = asset_path.split('/')[-1].split('.')[0]
+        object_name = f'BP_Direct_{base_name}_{timestamp}'
+        
+        self.logger.info(f"Attempting to spawn asset '{object_name}' from path '{asset_path}'")
+        self.logger.info(f"Target Location: {location}, Rotation: {rotation}, Scale: {scale}")
+        
+        try:
+            # 1. Spawn
+            self.logger.info(f"Sending spawn command for {asset_path}...")
+            # Note: Communicator's spawn_bp_asset is a wrapper around client.request('vset /objects/spawn_bp_asset ...')
+            # It strictly requires the asset path to be valid in the cooked project.
+            self.communicator.unrealcv.spawn_bp_asset(asset_path, object_name)
+            
+            # Verify if spawn command was actually successful by checking if object exists
+            # vget /objects returns a list of all objects. This might be heavy if there are many objects.
+            # Alternatively, try to get location of the new object. If it fails, spawn likely failed.
+            
+            check_response = self.communicator.unrealcv.client.request(f'vget /object/{object_name}/location')
+            if "error" in check_response.lower() or "null" in check_response.lower():
+                 self.logger.error(f"Spawn possibly failed. UnrealCV response to location check: {check_response}")
+                 self.logger.error(f"Please verify that the asset path '{asset_path}' exists in the cooked game content.")
+                 return False
+
+            # 2. Set Location 
+            self.logger.info(f"Setting location to {location}...")
+            self.communicator.unrealcv.set_location(location, object_name)
+            
+            # 3. Set Orientation
+            self.logger.info(f"Setting orientation to {rotation}...")
+            self.communicator.unrealcv.set_orientation(rotation, object_name)
+            
+            # 4. Set Scale
+            self.logger.info(f"Setting scale to {scale}...")
+            self.communicator.unrealcv.set_scale(scale, object_name)
+            
+            # 5. Set properties
+            self.communicator.unrealcv.set_collision(object_name, True)
+            self.communicator.unrealcv.set_movable(object_name, True)
+            
+            self.logger.info(f"Successfully placed {object_name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to place asset '{object_name}': {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return False
+
+

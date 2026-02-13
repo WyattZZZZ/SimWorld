@@ -215,6 +215,70 @@ class Communicator:
         else:
             return self.unrealcv.get_image(cam_ids, viewmode, mode)
 
+    def find_camera_id_for_actor(self, actor_name: str, max_camera_checks: int = 16, distance_threshold: float = 5.0):
+        """Find the camera ID whose location is closest to the given actor.
+
+        This is a heuristic used to recover camera bindings after the actor is
+        respawned/renamed (for example when a humanoid gets on/off a scooter).
+
+        Args:
+            actor_name: name of the actor in UE (e.g. returned by get_humanoid_name)
+            max_camera_checks: number of camera IDs to probe starting from 0
+            distance_threshold: maximum distance (Unreal units) to accept a match
+
+        Returns:
+            int or None: the camera_id closest to actor (or None if not found)
+        """
+        try:
+            actor_loc = self.unrealcv.get_location(actor_name)
+        except Exception:
+            return None
+
+        best_cam = None
+        best_dist = float('inf')
+        # probe camera ids from 0..max_camera_checks-1
+        for cam_id in range(max_camera_checks):
+            try:
+                cam_loc = self.unrealcv.get_camera_location(cam_id)
+            except Exception:
+                # invalid camera id or unreachable — skip
+                continue
+            # cam_loc and actor_loc are numpy arrays
+            dist = float(((cam_loc - actor_loc) ** 2).sum()) ** 0.5
+            if dist < best_dist:
+                best_dist = dist
+                best_cam = cam_id
+
+        if best_cam is not None and best_dist <= distance_threshold:
+            return best_cam
+        return None
+
+    def sync_camera_to_actor(self, actor_id: int, camera_id: int, height_offset: float = 160.0):
+        """Synchronize camera location to follow an actor (humanoid).
+
+        This locks the camera to the actor's position, useful for maintaining
+        first-person perspective as the agent moves. Call this each frame/step
+        to keep the camera bound to the actor despite UE input system interference.
+
+        Args:
+            actor_id: Humanoid ID.
+            camera_id: Camera ID to synchronize.
+            height_offset: Height above actor's feet (default 170 = humanoid eye level).
+        
+        Returns:
+            bool: True if sync successful, False otherwise.
+        """
+        try:
+            actor_name = self.get_humanoid_name(actor_id)
+            actor_loc = self.unrealcv.get_location(actor_name)
+            # Position camera above actor's feet
+            camera_loc = (actor_loc[0], actor_loc[1], actor_loc[2] + height_offset)
+            self.unrealcv.set_camera_location(camera_id, camera_loc)
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to sync camera {camera_id} to actor {actor_id}: {str(e)}")
+            return False
+
     def show_img(self, image):
         """Show image.
 
@@ -617,6 +681,7 @@ class Communicator:
                 raise ValueError('Agent name is required for non-humanoid agents')
             else:
                 name = name
+
         self.unrealcv.spawn_bp_asset(model_path, name)
         # Convert 2D position to 3D (x,y -> x,y,z)
         if position is None:

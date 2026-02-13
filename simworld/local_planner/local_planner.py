@@ -52,6 +52,19 @@ class LocalPlanner:
         self.communicator = agent.communicator
         self.max_history_step = max_history_step
         self.camera_id = self.agent.camera_id
+        # Try to resolve the actual UE camera bound to this humanoid (useful when actor
+        # was created/renamed in UE). This ensures camera follows the humanoid while walking.
+        try:
+            if self.communicator is not None:
+                ue_name = self.communicator.get_humanoid_name(self.agent.id)
+                found_cam = self.communicator.find_camera_id_for_actor(ue_name)
+                if found_cam is not None:
+                    self.camera_id = found_cam
+                    self.agent.camera_id = found_cam
+        except Exception:
+            # non-fatal; keep the current camera_id
+            pass
+
         self.observation_viewmode = observation_viewmode
         self.map: Map = self.agent.map
         self.rule_based = rule_based
@@ -158,6 +171,26 @@ class LocalPlanner:
         self.logger.info(f'Agent {self.agent.id} is navigating to {point}, current position: {self.agent.position}, vision based mode')
         while not self._walk_arrive_at_waypoint(point) and (self.exit_event is None or not self.exit_event.is_set()):
             time.sleep(self.dt)
+
+            # validate camera binding before requesting image — rebind if camera is far from actor
+            if self.communicator is not None:
+                try:
+                    actor_name = self.communicator.get_humanoid_name(self.agent.id)
+                    actor_loc = self.communicator.unrealcv.get_location(actor_name)
+                    try:
+                        cam_loc = self.communicator.unrealcv.get_camera_location(self.camera_id)
+                        dist = float(((cam_loc - actor_loc) ** 2).sum()) ** 0.5
+                    except Exception:
+                        dist = float('inf')
+                    # threshold (Unreal units). Config key optional; default 50.0
+                    threshold = self.agent.config.get('camera.rebind_distance_threshold', 50.0)
+                    if dist > threshold:
+                        found_cam = self.communicator.find_camera_id_for_actor(actor_name)
+                        if found_cam is not None:
+                            self.camera_id = found_cam
+                            self.agent.camera_id = found_cam
+                except Exception:
+                    pass
 
             images = []
             image = self.communicator.get_camera_observation(self.camera_id, self.observation_viewmode, mode='direct')
