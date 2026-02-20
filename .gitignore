@@ -449,3 +449,7 @@ docs/source/_static/
 
 # Output
 output*/
+videos/
+
+# mp4 files
+*.mp4

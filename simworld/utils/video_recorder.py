@@ -3,6 +3,8 @@
 import csv
 import os
 import random
+import threading
+import time
 
 import cv2
 
@@ -15,7 +17,6 @@ class VideoRecorder:
             communicator,
             humanoid,
             output_dir='.',
-            video_name='output.mp4',
             resolution=(1440, 720),
             fps=25.0,
             frame_num=500,
@@ -45,7 +46,7 @@ class VideoRecorder:
         self.communicator = communicator
         self.humanoid = humanoid
         self.output_dir = output_dir
-        self.video_path = os.path.join(output_dir, video_name)
+        self.video_path = os.path.join(output_dir, f'{self.humanoid.id} - {time.time()}.mp4')
         self.csv_camera = os.path.join(output_dir, 'camera_position.csv')
         self.csv_action = os.path.join(output_dir, 'humanoid_action.csv')
         self.resolution = resolution
@@ -64,67 +65,155 @@ class VideoRecorder:
 
         os.makedirs(output_dir, exist_ok=True)
 
+        # Async recording state
+        self.is_recording = False
+        self._recording_thread = None
+        self._frames = []
+        self._camera_positions = []
+        self._actions = []
+        self._start_time = None
+
     def record(self):
-        """Run the recording loop and persist video and CSV logs.
+        """Run the recording loop synchronously and persist video and CSV logs.
 
         Returns
         -------
         str
             Path to the saved video file.
         """
-        images = []
-        camera_position = []
-        humanoid_actions = []
+        self._frames = []
+        self._camera_positions = []
+        self._actions = []
+        self.is_recording = True
 
         timestamp = 0
-        stop = False
+        while len(self._frames) < self.frame_num:
+            # Sync camera and get pose in one step
+            cam_loc, cam_rot = self.communicator.sync_camera_to_actor(self.humanoid.id, self.humanoid.camera_id)
+            self._capture_step(timestamp, cam_loc, cam_rot)
 
-        while not stop:
-            # get image
-            try:
-                img = self.communicator.get_camera_observation(
-                    self.humanoid.camera_id, self.camera_mode, mode='direct'
-                )
-            except Exception as e:
-                print('❌ Error getting image:', e)
-                break
-
-            # get camera state
-            camera_loc = self.communicator.unrealcv.get_camera_location(self.humanoid.camera_id)
-            camera_rot = self.communicator.unrealcv.get_camera_rotation(self.humanoid.camera_id)
-
-            images.append(img)
-            camera_position.append([timestamp, camera_loc, camera_rot])
-
-            # log action
-            actions = self.move_pattern(timestamp)
-            humanoid_actions.extend(actions)
-
-            # progress bar
-            timestamp += 1
-            if self.frame_num > 0:
-                progress = timestamp / self.frame_num
-                bar_length = 30
-                filled = int(bar_length * progress)
-            bar = '#' * filled + '-' * (bar_length - filled)
-            print(f'\rProgress: |{bar}| {timestamp}/{self.frame_num} ({progress:.1%})', end='')
-
-            if len(images) >= self.frame_num:
-                stop = True
-
-            # Tick
+            # Tick logic for synchronous recording
             self.communicator.unrealcv.tick()
+            timestamp += 1
 
-        print('\n✅ Recording finished.')
-        self.save_video(images)
-        self.save_csv(camera_position, humanoid_actions)
+            # Progress bar
+            progress = len(self._frames) / self.frame_num
+            bar_length = 30
+            filled = int(bar_length * progress)
+            bar = '#' * filled + '-' * (bar_length - filled)
+            print(f'\rRecording: |{bar}| {len(self._frames)}/{self.frame_num} ({progress:.1%})', end='')
+
+        self.is_recording = False
+        print('\n✅ Sync recording finished.')
+        self.save_video(self._frames)
+        self.save_csv(self._camera_positions, self._actions)
         return self.video_path
+
+    def _capture_step(self, timestamp, camera_loc=None, camera_rot=None):
+        """Capture a single frame and log metadata.
+
+        Args:
+            timestamp: Step timestamp.
+            camera_loc: Optional pre-calculated camera location.
+            camera_rot: Optional pre-calculated camera rotation.
+        """
+        try:
+            # If pose not provided, sync and get it now
+            if camera_loc is None or camera_rot is None:
+                camera_loc, camera_rot = self.communicator.sync_camera_to_actor(
+                    self.humanoid.id, self.humanoid.camera_id
+                )
+
+            img = self.communicator.get_camera_observation(
+                self.humanoid.camera_id, self.camera_mode, mode='direct'
+            )
+            
+            # Use cached pose instead of querying UE again
+            self._frames.append(img)
+            self._camera_positions.append([timestamp, camera_loc, camera_rot])
+
+            # Record move pattern if needed (only for internal pattern)
+            # In async mode, actions are usually driven by external logic
+            if not self._recording_thread:
+                actions = self.move_pattern(timestamp)
+                self._actions.extend(actions)
+                
+        except Exception as e:
+            print(f'\n❌ Error during capture at step {timestamp}: {e}')
+
+    def start_async(self):
+        """Start recording in a background thread."""
+        if self.is_recording:
+            print("⚠️ Already recording.")
+            return
+
+        self._frames = []
+        self._camera_positions = []
+        self._actions = []
+        self.is_recording = True
+        self._start_time = time.time()
+
+        self._recording_thread = threading.Thread(target=self._async_recording_loop, daemon=True)
+        self._recording_thread.start()
+        print(f"🎬 Async recording started (FPS: {self.fps}).")
+
+    def stop_async(self, preserve_real_time=True):
+        """Stop background recording and save files.
+
+        Args:
+            preserve_real_time (bool): If True, adjust video FPS to match actual capture rate 
+                                      so the video duration matches real-world duration.
+        """
+        if not self.is_recording:
+            print("⚠️ Not recording.")
+            return
+
+        self.video_path = os.path.join(self.output_dir, f'{self.humanoid.id} - {time.time()}.mp4')
+        self.is_recording = False
+        duration = time.time() - self._start_time
+        if self._recording_thread:
+            self._recording_thread.join()
+        if len(self._frames) <= 1:
+            print('\n❌ No frames captured. Recording failed.')
+            return None
+        
+        actual_fps = len(self._frames) / duration if duration > 0 else self.fps
+        print('\n✅ Async recording finished.')
+        print(f'📊 Stats: Captured {len(self._frames)} frames in {duration:.2f}s (Actual FPS: {actual_fps:.2f}).')
+        save_fps = actual_fps if preserve_real_time else self.fps
+        if preserve_real_time:
+            print(f'🎬 Saving video at {save_fps:.2f} FPS to match simulation duration.')
+            
+        self.save_video(self._frames, override_fps=save_fps)
+        self.save_csv(self._camera_positions, self._actions)
+        return self.video_path
+
+    def _async_recording_loop(self):
+        """Background loop for capturing frames."""
+        interval = 1.0 / self.fps
+        timestamp = 0
+        
+        while self.is_recording:
+            loop_start = time.time()
+            
+            self._capture_step(timestamp)
+            timestamp += 1
+            
+            # Sleep to maintain FPS
+            elapsed = time.time() - loop_start
+            sleep_time = max(0, interval - elapsed)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
     def _move_pattern(self, timestamp):
         """Generate a movement pattern for the humanoid at given timestamp."""
         actions = []
-        step = timestamp
+        # In async mode, we don't automatically trigger move patterns
+        # because the user is controlling the agent externally.
+        if self._recording_thread:
+            return actions
 
+        step = timestamp
         # --- move forward ---
         self._apply_action('move_forward', None, timestamp, actions)
 
@@ -157,18 +246,20 @@ class VideoRecorder:
             self.communicator.humanoid_rotate(self.humanoid.id, value, 'left')
             actions.append([timestamp, 'rotate_left'])
 
-    def save_video(self, images):
+    def save_video(self, images, override_fps=None):
         """Save frames to an MP4 file using OpenCV."""
         if not images:
             print('⚠️ No frames to save.')
             return
+            
+        fps = override_fps if override_fps is not None else self.fps
         h, w, _ = images[0].shape
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(self.video_path, fourcc, self.fps, (w, h))
+        out = cv2.VideoWriter(self.video_path, fourcc, fps, (w, h))
         for img in images:
             out.write(img)  # img must be in BGR format
         out.release()
-        print(f'💾 Video saved to {self.video_path}')
+        print(f'💾 Video saved to {self.video_path} at {fps:.2f} FPS')
 
     def save_csv(self, camera_position, humanoid_actions):
         """Save camera pose timeline and humanoid actions into CSV files."""

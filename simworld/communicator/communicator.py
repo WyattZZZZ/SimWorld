@@ -15,6 +15,7 @@ from simworld.communicator.unrealcv import UnrealCV
 from simworld.utils.load_json import load_json
 from simworld.utils.logger import Logger
 from simworld.utils.vector import Vector
+from simworld.utils.video_recorder import VideoRecorder
 
 
 class Communicator:
@@ -42,6 +43,7 @@ class Communicator:
         self.waypoint_mark_id_to_name = {}
 
         self.lock = Lock()
+        self.background_recorders = {}
 
     ##############################################################
     # Humanoid Methods
@@ -162,6 +164,23 @@ class Communicator:
             self.humanoid_id_to_name[humanoid_id] = f'GEN_BP_Humanoid_{humanoid_id}'
         return self.humanoid_id_to_name[humanoid_id]
 
+    def destroy_object(self, object_name):
+        """Destroy an object.
+
+        Args:
+            object_name: Object name.
+        """
+        return self.unrealcv.destroy(object_name)
+
+    def destroy_humanoid(self, humanoid_id):
+        """Destroy a humanoid.
+
+        Args:
+            humanoid_id: Humanoid ID.
+        """
+        name = self.get_humanoid_name(humanoid_id)
+        return self.unrealcv.destroy(name)
+
     ##############################################################
     # Scooter-related methods
     ##############################################################
@@ -264,20 +283,25 @@ class Communicator:
             actor_id: Humanoid ID.
             camera_id: Camera ID to synchronize.
             height_offset: Height above actor's feet (default 170 = humanoid eye level).
-        
         Returns:
-            bool: True if sync successful, False otherwise.
+            tuple: (location, rotation) if successful, (None, None) otherwise.
         """
         try:
             actor_name = self.get_humanoid_name(actor_id)
             actor_loc = self.unrealcv.get_location(actor_name)
-            # Position camera above actor's feet
+            actor_rot = self.unrealcv.get_orientation(actor_name)
+
+            # Position camera above actor's feet (standard eye level)
             camera_loc = (actor_loc[0], actor_loc[1], actor_loc[2] + height_offset)
+
+            # Sync camera position and rotation
             self.unrealcv.set_camera_location(camera_id, camera_loc)
-            return True
+            self.unrealcv.set_camera_rotation(camera_id, actor_rot)
+
+            return camera_loc, actor_rot
         except Exception as e:
             self.logger.warning(f"Failed to sync camera {camera_id} to actor {actor_id}: {str(e)}")
-            return False
+            return None, None
 
     def show_img(self, image):
         """Show image.
@@ -286,6 +310,50 @@ class Communicator:
             image: Image data.
         """
         self.unrealcv.show_img(image)
+
+    def show_video(self, video_path):
+        """Show video.
+
+        Args:
+            video_path: Video file path.
+        """
+        self.unrealcv.show_video(video_path)
+
+    def start_background_recording(self, humanoid, output_dir='../videos', fps=20.0, resolution=(1280, 720)):
+        """Start recording video from a humanoid's camera in the background.
+
+        Args:
+            humanoid: Humanoid agent object.
+            output_dir: Output directory.
+            fps: Recording FPS.
+            resolution: Camera resolution.
+        """
+        recorder = VideoRecorder(
+            communicator=self,
+            humanoid=humanoid,
+            output_dir=output_dir,
+            resolution=resolution,
+            fps=fps,
+            frame_num=-1  # Unlimited recording until stopped
+        )
+        recorder.start_async()
+        self.background_recorders[humanoid.id] = recorder
+        return recorder
+
+    def stop_background_recording(self, humanoid, preserve_real_time=True):
+        """Stop background recording for a specific humanoid.
+
+        Args:
+            humanoid: Humanoid agent object.
+            preserve_real_time (bool): If True, adjust video FPS to match actual capture rate
+                                      so the video duration matches real-world duration.
+        """
+        if humanoid.id in self.background_recorders:
+            recorder = self.background_recorders.pop(humanoid.id)
+            return recorder.stop_async(preserve_real_time=preserve_real_time)
+
+        self.logger.warning(f"No background recording found for humanoid {humanoid.id}")
+        return None
 
     ##############################################################
     # Vehicle-related methods
