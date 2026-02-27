@@ -124,13 +124,14 @@ Your objective is to locate a **hidden red apple** in the environment.
 ## Hint:
 - **Hider will only hide inside the boarder. And since he was only provided with 10 steps, he will hide as close to the origin as possible.**
 - **Try to search those corners.**
+- **You can only use found when you can see the apple in your view, not from the video.**
 
 
 ## 🕹 Available Actions
 Output **EXACTLY ONE** of the following commands:
 1. `forward <duration>` (between `0` and `30`)
 2. `rotate <angle> <direction>` (e.g., `rotate 135 left`)
-3. `found <sentence>` (e.g., `found apple is in front of me` or `found apple is next to that building made of glass`) 
+3. `found <sentence>` (e.g., `found apple is next to that building made of glass`) 
 4. `wait` (Stay still for 1 second)
 
 ## ⚠️ Strict Output Rule
