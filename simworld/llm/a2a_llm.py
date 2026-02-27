@@ -18,11 +18,12 @@ from .base_llm import BaseLLM
 
 class A2ALLM(BaseLLM):
     """Local Planner (Activity to Action) LLM class for handling interactions with language models."""
-    def __init__(self, model_name: str = 'gpt-4o-mini', url: str = None, provider: str = 'openai'):
+    def __init__(self, model_name: str = 'gpt-4o-mini', url: str = None, provider: str = 'openai', few_shot_data: list = []):
         """Initialize the Local Planner LLM."""
         super().__init__(model_name, url, provider)
 
         self.logger = Logger.get_logger('A2ALLM')
+        self.few_shot_data = few_shot_data
 
     def generate_instructions(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
         """Generate instructions for the Local Planner system.
@@ -38,18 +39,26 @@ class A2ALLM(BaseLLM):
             response_format (BaseModel): The response format for the Local Planner system.
         """
         if self.provider == 'openai':
-            return self._generate_instructions_openai(system_prompt, user_prompt, images, video_path, max_tokens, temperature, top_p, response_format)
+            return self._generate_instructions_openai(system_prompt, user_prompt, images, video_path, max_tokens, temperature, top_p, response_format, self.few_shot_data)
         elif self.provider == 'openrouter':
-            return self._generate_instructions_openrouter(system_prompt, user_prompt, images, video_path, max_tokens, temperature, top_p, response_format)
+            return self._generate_instructions_openrouter(system_prompt, user_prompt, images, video_path, max_tokens, temperature, top_p, response_format, self.few_shot_data)
         elif self.provider == 'google':
-            return self._generate_instructions_gemini(system_prompt, user_prompt, images, video_path, max_tokens, temperature, top_p, response_format)
+            return self._generate_instructions_gemini(system_prompt, user_prompt, images, video_path, max_tokens, temperature, top_p, response_format, self.few_shot_data)
         else:
             raise ValueError(f'Invalid provider: {self.provider}')
 
-    def _generate_instructions_openai(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+    def _generate_instructions_openai(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel, few_shot_data=[]):
         start_time = time.time()
         user_content = []
         user_content.append({'type': 'text', 'text': user_prompt})
+
+        try:
+            if few_shot_data:
+                for example in few_shot_data:
+                    user_content.append({'type': 'text', 'text': f"Example: {example['text']}"})
+                    user_content.append({'type': 'image_url', 'image_url': {'url': f"data:image/jpeg;base64,{self._process_image_to_base64(cv2.cvtColor(cv2.imread(example['image']), cv2.COLOR_BGR2RGB))}"}})
+        except Exception as e:
+            self.logger.error(f'Error in _generate_instructions_openai: {e}')
 
         for image in images:
             img_data = self._process_image_to_base64(image)
@@ -78,7 +87,7 @@ class A2ALLM(BaseLLM):
             if "Think" in self.model_name or "think" in self.model_name:
                 valid_commands = ['forward', 'rotate', 'place_apple', 'found', 'wait']
                 lines = action_json.split('\n')
-                for line in reversed(lines):  # 从后往前找，通常指令在最后
+                for line in reversed(lines):
                     line = line.strip().lower()
                     if any(cmd in line for cmd in valid_commands):
                         action_json = line
@@ -89,12 +98,29 @@ class A2ALLM(BaseLLM):
 
         return action_json, time.time() - start_time
 
-    def _generate_instructions_gemini(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+    def _generate_instructions_gemini(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel, few_shot_data=[]):
         start_time = time.time()
         
         parts = []
         # Add system prompt and user prompt
         parts.append(types.Part(text=system_prompt + '\n' + user_prompt))
+
+        try:
+            if few_shot_data:
+                for example in few_shot_data:
+                    parts.append(types.Part(text=f"Example: {example['text']}"))
+                    if isinstance(example['image'], np.ndarray):
+                        image = Image.fromarray(example['image'])
+                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    else:
+                        image = Image.open(example['image'])
+                    
+                    img_byte_arr = io.BytesIO()
+                    image.save(img_byte_arr, format='JPEG')
+                    img_bytes = img_byte_arr.getvalue()
+                    parts.append(types.Part(inline_data=types.Blob(data=img_bytes, mime_type='image/jpeg')))
+        except Exception as e:
+            self.logger.error(f'Error in _generate_instructions_gemini: {e}')
         
         # Add images
         for image in images:
@@ -123,12 +149,17 @@ class A2ALLM(BaseLLM):
 
         return action_json, time.time() - start_time
 
-    def _generate_instructions_openrouter(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+    def _generate_instructions_openrouter(self, system_prompt, user_prompt, images=[], video_path=None, max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel, few_shot_data=[]):
 
         start_time = time.time()
         user_content = []
         user_prompt += '\nPlease respond in valid JSON format following this schema: ' + str(response_format.to_json_schema())
         user_content.append({'type': 'text', 'text': user_prompt})
+
+        if few_shot_data:
+            for example in few_shot_data:
+                user_content.append({'type': 'text', 'text': f"Example: {example['text']}"})
+                user_content.append({'type': 'image_url', 'image_url': {'url': f"data:image/jpeg;base64,{example['image']}"}})
 
         for image in images:
             img_data = self._process_image_to_base64(image)
@@ -178,6 +209,8 @@ class A2ALLM(BaseLLM):
         # Convert single channel to 3 channels if needed
         if len(image.shape) == 2 or (len(image.shape) == 3 and image.shape[2] == 1):
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         # Ensure uint8 type
         if image.dtype != np.uint8:
