@@ -124,6 +124,7 @@ Your objective is to locate a **hidden red apple** in the environment.
 ## Hint:
 - **Hider will only hide inside the boarder. And since he was only provided with 10 steps, he will hide as close to the origin as possible.**
 - **Try to search those corners.**
+- **You can only use found when you can see the apple in your view, not from the video.**
 
 
 ## 🕹 Available Actions
@@ -535,7 +536,7 @@ def main():
 
     # 5. 保存图片 (必须传入路径)
     if "ego_view" in obs:
-        last = Image.fromarray(obs["ego_view"])
+        last = Image.fromarray(cv2.cvtColor(obs["ego_view"], cv2.COLOR_BGR2RGB))
         img_path = os.path.join(current_record_path, "ego_view.png")
         last.save(img_path)
         print(f"Success: Saved data and image to {current_record_path}")

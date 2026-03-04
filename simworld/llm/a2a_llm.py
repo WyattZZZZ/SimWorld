@@ -110,8 +110,7 @@ class A2ALLM(BaseLLM):
                 for example in few_shot_data:
                     parts.append(types.Part(text=f"Example: {example['text']}"))
                     if isinstance(example['image'], np.ndarray):
-                        image = Image.fromarray(example['image'])
-                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                        image = Image.fromarray(cv2.cvtColor(example['image'], cv2.COLOR_BGR2RGB))
                     else:
                         image = Image.open(example['image'])
                     
