@@ -33,7 +33,7 @@ export PROJECT_ROOT=$(pwd)
 mkdir -p logs
 mkdir -p records
 
-TOTAL_ROUNDS=20
+TOTAL_ROUNDS=1
 UE_PORT=9000
 VLLM_PORT=8000
 UE_GPU_ID=1

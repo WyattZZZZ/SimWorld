@@ -119,7 +119,7 @@ Your objective is to locate a **hidden red apple** in the environment.
 - **Turn Around**: If you find robot is not moving in video or cannot see anything, try rotate 180
 - **Pay attention to Your steps**: Use it wisely, you only have 25 steps.
 - **View**: You can use the `found` when you see the apple in your view of a non empty environment, and less than 20 meters away.
-- **Found**: you must use it with one sentence, this sentence shows the approximate apple's position in your view.
+- **Found Policy**: You will be punished if you use found command while no apple is found in the end.
 
 ## Hint:
 - **Hider will only hide inside the boarder. And since he was only provided with 10 steps, he will hide as close to the origin as possible.**
@@ -130,7 +130,7 @@ Your objective is to locate a **hidden red apple** in the environment.
 Output **EXACTLY ONE** of the following commands:
 1. `forward <duration>` (between `0` and `30`)
 2. `rotate <angle> <direction>` (e.g., `rotate 135 left`)
-3. `found <sentence>` (e.g., `found apple is in front of me` or `found apple is next to that building made of glass`) 
+3. `found <sentence>` (e.g., `found apple is next to that building made of glass`) 
 4. `wait` (Stay still for 1 second)
 
 ## ⚠️ Strict Output Rule

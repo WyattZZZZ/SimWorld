@@ -4,6 +4,7 @@ This module provides a client interface for communicating with Unreal Engine,
 allowing for various operations such as object spawning, movement, and image
 capture.
 """
+
 import json
 import os
 import struct
@@ -27,7 +28,7 @@ class UnrealCV(object):
     including basic operations and traffic system operations.
     """
 
-    def __init__(self, port=9000, ip='127.0.0.1', resolution=(1280, 720)):
+    def __init__(self, port=9000, ip="127.0.0.1", resolution=(1280, 720)):
         """Initialize the UnrealCV client.
 
         Args:
@@ -43,7 +44,7 @@ class UnrealCV(object):
         self.resolution = resolution
 
         self.lock = Lock()
-        self.logger = Logger.get_logger('UnrealCV')
+        self.logger = Logger.get_logger("UnrealCV")
         self.ini_unrealcv(resolution)
 
     def request(self, cmd, timeout=5):
@@ -86,15 +87,17 @@ class UnrealCV(object):
         """
         self.check_connection()
         [w, h] = resolution
-        self.request(f'vrun setres {w}x{h}w', -1)  # Set resolution of display window
+        self.request(f"vrun setres {w}x{h}w", -1)  # Set resolution of display window
 
-        self.request('vrun Editor.AsyncSkinnedAssetCompilation 2', -1)  # To correctly load the character
+        self.request(
+            "vrun Editor.AsyncSkinnedAssetCompilation 2", -1
+        )  # To correctly load the character
         time.sleep(1)
 
     def check_connection(self):
         """Check connection status, attempt to reconnect if not connected."""
         while self.client.isconnected() is False:
-            self.logger.error('UnrealCV server is not running. Please try again')
+            self.logger.error("UnrealCV server is not running. Please try again")
             time.sleep(1)
             self.client.connect()
 
@@ -106,7 +109,7 @@ class UnrealCV(object):
             prefab: Prefab.
             name: Object name.
         """
-        cmd = f'vset /objects/spawn {prefab} {name}'
+        cmd = f"vset /objects/spawn {prefab} {name}"
         return self.request(cmd)
 
     def spawn_bp_asset(self, prefab_path, name):
@@ -116,12 +119,12 @@ class UnrealCV(object):
             prefab_path: Prefab path.
             name: Object name.
         """
-        cmd = f'vset /objects/spawn_bp_asset {prefab_path} {name}'
+        cmd = f"vset /objects/spawn_bp_asset {prefab_path} {name}"
         return self.request(cmd)
 
     def clean_garbage(self):
         """Clean garbage objects."""
-        return self.request('vset /action/clean_garbage')
+        return self.request("vset /action/clean_garbage")
 
     def set_location(self, loc, name):
         """Set object location.
@@ -131,7 +134,7 @@ class UnrealCV(object):
             name: Object name.
         """
         [x, y, z] = loc
-        cmd = f'vset /object/{name}/location {x} {y} {z}'
+        cmd = f"vset /object/{name}/location {x} {y} {z}"
         return self.request(cmd)
 
     def set_orientation(self, orientation, name):
@@ -142,7 +145,7 @@ class UnrealCV(object):
             name: Object name.
         """
         [pitch, yaw, roll] = orientation
-        cmd = f'vset /object/{name}/rotation {pitch} {yaw} {roll}'
+        cmd = f"vset /object/{name}/rotation {pitch} {yaw} {roll}"
         return self.request(cmd)
 
     def set_scale(self, scale, name):
@@ -153,7 +156,7 @@ class UnrealCV(object):
             name: Object name.
         """
         [x, y, z] = scale
-        cmd = f'vset /object/{name}/scale {x} {y} {z}'
+        cmd = f"vset /object/{name}/scale {x} {y} {z}"
         return self.request(cmd)
 
     def set_color(self, actor_name, color):
@@ -164,7 +167,7 @@ class UnrealCV(object):
             color: Color in the form [R, G, B].
         """
         [R, G, B] = color
-        cmd = f'vset /object/{actor_name}/color {R} {G} {B}'
+        cmd = f"vset /object/{actor_name}/color {R} {G} {B}"
         return self.request(cmd)
 
     def enable_controller(self, name, enable_controller):
@@ -174,7 +177,7 @@ class UnrealCV(object):
             name: Object name.
             enable_controller: Whether to enable controller.
         """
-        cmd = f'vbp {name} EnableController {enable_controller}'
+        cmd = f"vbp {name} EnableController {enable_controller}"
         return self.request(cmd)
 
     def set_physics(self, actor_name, hasPhysics):
@@ -184,7 +187,7 @@ class UnrealCV(object):
             actor_name: Actor name.
             hasPhysics: Whether to enable physics.
         """
-        cmd = f'vset /object/{actor_name}/physics {hasPhysics}'
+        cmd = f"vset /object/{actor_name}/physics {hasPhysics}"
         return self.request(cmd)
 
     def set_collision(self, actor_name, hasCollision):
@@ -194,7 +197,7 @@ class UnrealCV(object):
             actor_name: Actor name.
             hasCollision: Whether to enable collision.
         """
-        cmd = f'vset /object/{actor_name}/collision {hasCollision}'
+        cmd = f"vset /object/{actor_name}/collision {hasCollision}"
         return self.request(cmd)
 
     def set_movable(self, actor_name, isMovable):
@@ -204,7 +207,7 @@ class UnrealCV(object):
             actor_name: Actor name.
             isMovable: Whether the object is movable.
         """
-        cmd = f'vset /object/{actor_name}/object_mobility {isMovable}'
+        cmd = f"vset /object/{actor_name}/object_mobility {isMovable}"
         return self.request(cmd)
 
     def set_fps(self, fps):
@@ -213,32 +216,34 @@ class UnrealCV(object):
         Args:
             fps: FPS.
         """
-        cmd = f'vset /action/set_fixed_frame_rate {fps}'
+        cmd = f"vset /action/set_fixed_frame_rate {fps}"
         return self.request(cmd)
 
-    def set_mode(self, mode='async', tick_interval=0.05):
+    def set_mode(self, mode="async", tick_interval=0.05):
         """Set asynchronous or synchronous mode.
 
         Args:
             mode: Mode.
             tick_interval: Tick interval if synchronous mode.
         """
-        if mode == 'sync':
+        if mode == "sync":
             self.set_tick_interval(tick_interval)
-            return self.request('vset /action/game/pause')
-        elif mode == 'async':
-            return self.request('vset /action/game/resume')
+            return self.request("vset /action/game/pause")
+        elif mode == "async":
+            return self.request("vset /action/game/resume")
         else:
-            raise ValueError(f'Invalid mode: {mode}. Please choose from "sync" or "async".')
+            raise ValueError(
+                f'Invalid mode: {mode}. Please choose from "sync" or "async".'
+            )
 
     def set_tick_interval(self, interval):
         """Set tick interval."""
-        cmd = f'vset /action/tick_intervel {interval}'
+        cmd = f"vset /action/tick_intervel {interval}"
         return self.request(cmd)
 
     def tick(self):
         """Tick."""
-        cmd = 'vset /action/tick'
+        cmd = "vset /action/tick"
         return self.request(cmd)
 
     def destroy(self, actor_name):
@@ -247,7 +252,7 @@ class UnrealCV(object):
         Args:
             actor_name: Actor name.
         """
-        cmd = f'vset /object/{actor_name}/destroy'
+        cmd = f"vset /object/{actor_name}/destroy"
         return self.request(cmd)
 
     def get_objects(self):
@@ -256,7 +261,7 @@ class UnrealCV(object):
         Returns:
             List of objects.
         """
-        res = self.request('vget /objects')
+        res = self.request("vget /objects")
         objects = np.array(res.split())
         return objects
 
@@ -267,7 +272,7 @@ class UnrealCV(object):
             name: Object name.
             new_name: New object name.
         """
-        cmd = f'vset /object/{name}/name {new_name}'
+        cmd = f"vset /object/{name}/name {new_name}"
         return self.request(cmd)
 
     def get_collision_num(self, actor_name):
@@ -280,7 +285,7 @@ class UnrealCV(object):
             dict: Collision counts keyed by ``HumanCollision``, ``ObjectCollision``,
             ``BuildingCollision``, and ``VehicleCollision``.
         """
-        res = self.request(f'vbp {actor_name} GetCollisionNum')
+        res = self.request(f"vbp {actor_name} GetCollisionNum")
         return res
 
     def get_location(self, actor_name):
@@ -292,7 +297,7 @@ class UnrealCV(object):
         Returns:
             Location coordinates array.
         """
-        cmd = f'vget /object/{actor_name}/location'
+        cmd = f"vget /object/{actor_name}/location"
         res = self.request(cmd)
         location = [float(i) for i in res.split()]
         return np.array(location)
@@ -306,7 +311,7 @@ class UnrealCV(object):
         Returns:
             List of location coordinate arrays.
         """
-        cmd = [f'vget /object/{actor_name}/location' for actor_name in actor_names]
+        cmd = [f"vget /object/{actor_name}/location" for actor_name in actor_names]
         res = self.request_batch(cmd)
         # Parse each response and convert to numpy array
         locations = [np.array([float(i) for i in r.split()]) for r in res]
@@ -321,7 +326,7 @@ class UnrealCV(object):
         Returns:
             Orientation array.
         """
-        cmd = f'vget /object/{actor_name}/rotation'
+        cmd = f"vget /object/{actor_name}/rotation"
         res = self.request(cmd)
         orientation = [float(i) for i in res.split()]
         return np.array(orientation)
@@ -335,7 +340,7 @@ class UnrealCV(object):
         Returns:
             List of orientation arrays.
         """
-        cmd = [f'vget /object/{actor_name}/rotation' for actor_name in actor_names]
+        cmd = [f"vget /object/{actor_name}/rotation" for actor_name in actor_names]
         res = self.request_batch(cmd)
         # Parse each response and convert to numpy array
         orientations = [np.array([float(i) for i in r.split()]) for r in res]
@@ -353,7 +358,7 @@ class UnrealCV(object):
             brake: Brake value.
             steering: Steering value.
         """
-        cmd = f'vbp {object_name} SetState {throttle} {brake} {steering}'
+        cmd = f"vbp {object_name} SetState {throttle} {brake} {steering}"
         return self.request(cmd)
 
     def v_make_u_turn(self, object_name):
@@ -362,7 +367,7 @@ class UnrealCV(object):
         Args:
             object_name: Object name.
         """
-        cmd = f'vbp {object_name} MakeUTurn'
+        cmd = f"vbp {object_name} MakeUTurn"
         return self.request(cmd)
 
     def v_set_states(self, manager_object_name, states: str):
@@ -372,7 +377,7 @@ class UnrealCV(object):
             manager_object_name: Manager object name.
             states: States string.
         """
-        cmd = f'vbp {manager_object_name} VSetState {states}'
+        cmd = f"vbp {manager_object_name} VSetState {states}"
         return self.request(cmd)
 
     def p_set_states(self, manager_object_name, states: str):
@@ -382,7 +387,7 @@ class UnrealCV(object):
             manager_object_name: Manager object name.
             states: States string.
         """
-        cmd = f'vbp {manager_object_name} PSetState {states}'
+        cmd = f"vbp {manager_object_name} PSetState {states}"
         return self.request(cmd)
 
     def p_stop(self, object_name):
@@ -391,7 +396,7 @@ class UnrealCV(object):
         Args:
             object_name: Object name.
         """
-        cmd = f'vbp {object_name} StopPedestrian'
+        cmd = f"vbp {object_name} StopPedestrian"
         return self.request(cmd)
 
     def p_move_forward(self, object_name):
@@ -400,10 +405,10 @@ class UnrealCV(object):
         Args:
             object_name: Object name.
         """
-        cmd = f'vbp {object_name} MoveForward'
+        cmd = f"vbp {object_name} MoveForward"
         return self.request(cmd)
 
-    def p_rotate(self, object_name, angle, direction='left'):
+    def p_rotate(self, object_name, angle, direction="left"):
         """Rotate pedestrian.
 
         Args:
@@ -411,12 +416,12 @@ class UnrealCV(object):
             angle: Angle.
             direction: Direction, defaults to 'left'.
         """
-        if direction == 'right':
+        if direction == "right":
             clockwise = 1
-        elif direction == 'left':
+        elif direction == "left":
             angle = -angle
             clockwise = -1
-        cmd = f'vbp {object_name} Rotate_Angle {1} {angle} {clockwise}'
+        cmd = f"vbp {object_name} Rotate_Angle {1} {angle} {clockwise}"
         return self.request(cmd)
 
     def p_set_speed(self, object_name, speed):
@@ -426,7 +431,7 @@ class UnrealCV(object):
             object_name: Object name.
             speed: Speed.
         """
-        cmd = f'vbp {object_name} SetMaxSpeed {speed}'
+        cmd = f"vbp {object_name} SetMaxSpeed {speed}"
         return self.request(cmd)
 
     def p_movement_simulation(self, object_name):
@@ -435,7 +440,7 @@ class UnrealCV(object):
         Args:
             object_name: Object name.
         """
-        cmd = f'vbp {object_name} MovementSimulation'
+        cmd = f"vbp {object_name} MovementSimulation"
         return self.request(cmd)
 
     def p_set_waypoints(self, object_name, waypoints):
@@ -445,7 +450,7 @@ class UnrealCV(object):
             object_name: Object name.
             waypoints: String of waypoints. Use semicolon to separate waypoints and use comma to separate coordinates. Example: "100,100;200,200;300,300"
         """
-        cmd = f'vbp {object_name} SetWaypoints {waypoints}'
+        cmd = f"vbp {object_name} SetWaypoints {waypoints}"
         return self.request(cmd)
 
     def tl_set_vehicle_green(self, object_name: str):
@@ -454,7 +459,7 @@ class UnrealCV(object):
         Args:
             object_name: Object name.
         """
-        cmd = f'vbp {object_name} SwitchVehicleFrontGreen'
+        cmd = f"vbp {object_name} SwitchVehicleFrontGreen"
         return self.request(cmd)
 
     def tl_set_pedestrian_walk(self, object_name: str):
@@ -463,10 +468,16 @@ class UnrealCV(object):
         Args:
             object_name: Object name.
         """
-        cmd = f'vbp {object_name} SetPedestrianWalk'
+        cmd = f"vbp {object_name} SetPedestrianWalk"
         return self.request(cmd)
 
-    def tl_set_duration(self, object_name: str, green_duration: float, yellow_duration: float, pedestrian_green_duration: float):
+    def tl_set_duration(
+        self,
+        object_name: str,
+        green_duration: float,
+        yellow_duration: float,
+        pedestrian_green_duration: float,
+    ):
         """Set traffic light duration.
 
         Args:
@@ -475,7 +486,7 @@ class UnrealCV(object):
             yellow_duration: Yellow duration.
             pedestrian_green_duration: Pedestrian green duration.
         """
-        cmd = f'vbp {object_name} SetDuration {green_duration} {yellow_duration} {pedestrian_green_duration}'
+        cmd = f"vbp {object_name} SetDuration {green_duration} {yellow_duration} {pedestrian_green_duration}"
         return self.request(cmd)
 
     def get_informations(self, manager_object_name):
@@ -487,7 +498,7 @@ class UnrealCV(object):
         Returns:
             str: Information string containing the current state of the environment.
         """
-        cmd = f'vbp {manager_object_name} GetInformation'
+        cmd = f"vbp {manager_object_name} GetInformation"
         return self.request(cmd)
 
     def update_ue_manager(self, manager_object_name):
@@ -496,7 +507,7 @@ class UnrealCV(object):
         Args:
             manager_object_name: Name of the manager object to update.
         """
-        cmd = f'vbp {manager_object_name} UpdateObjects'
+        cmd = f"vbp {manager_object_name} UpdateObjects"
         return self.request(cmd)
 
     def add_vehicle_signal(self, intersection_name, vehicle_signal_name):
@@ -506,7 +517,7 @@ class UnrealCV(object):
             intersection_name: Name of the intersection to add traffic signal to.
             vehicle_signal_name: Name of the vehicle signal to add.
         """
-        cmd = f'vbp {intersection_name} AddVehicleSignal {vehicle_signal_name}'
+        cmd = f"vbp {intersection_name} AddVehicleSignal {vehicle_signal_name}"
         return self.request(cmd)
 
     def add_pedestrian_signal(self, intersection_name, pedestrian_signal_name):
@@ -516,12 +527,12 @@ class UnrealCV(object):
             intersection_name: Name of the intersection to add pedestrian signal to.
             pedestrian_signal_name: Name of the pedestrian signal to add.
         """
-        cmd = f'vbp {intersection_name} AddPedSignal {pedestrian_signal_name}'
+        cmd = f"vbp {intersection_name} AddPedSignal {pedestrian_signal_name}"
         return self.request(cmd)
 
     def traffic_signal_start_simulation(self, intersection_name):
         """Start traffic signal simulation."""
-        cmd = f'vbp {intersection_name} StartSimulation'
+        cmd = f"vbp {intersection_name} StartSimulation"
         return self.request(cmd)
 
     ##############################################################
@@ -546,7 +557,7 @@ class UnrealCV(object):
                 direction = 3
             elif direction == 3:
                 direction = 2
-        cmd = f'vbp {robot_name} Move_Speed {speed} {duration} {direction}'
+        cmd = f"vbp {robot_name} Move_Speed {speed} {duration} {direction}"
         res = self.request(cmd)
         time.sleep(duration)
         return res
@@ -559,7 +570,7 @@ class UnrealCV(object):
             action: Action in the form [duration, angle, direction].
         """
         [duration, angle, direction] = action
-        cmd = f'vbp {robot_name} Rotate_Angle {duration} {angle} {direction}'
+        cmd = f"vbp {robot_name} Rotate_Angle {duration} {angle} {direction}"
         res = self.request(cmd)
         time.sleep(duration)
         return res
@@ -570,7 +581,7 @@ class UnrealCV(object):
         Args:
             robot_name: Robot name.
         """
-        cmd = f'vbp {robot_name} lookup'
+        cmd = f"vbp {robot_name} lookup"
         return self.request(cmd)
 
     def dog_look_down(self, robot_name):
@@ -579,7 +590,7 @@ class UnrealCV(object):
         Args:
             robot_name: Robot name.
         """
-        cmd = f'vbp {robot_name} lookdown'
+        cmd = f"vbp {robot_name} lookdown"
         return self.request(cmd)
 
     ##############################################################
@@ -593,10 +604,10 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object to move forward.
         """
-        cmd = f'vbp {object_name} MoveForward'
+        cmd = f"vbp {object_name} MoveForward"
         return self.request(cmd)
 
-    def humanoid_rotate(self, object_name, angle, direction='left'):
+    def humanoid_rotate(self, object_name, angle, direction="left"):
         """Rotate humanoid.
 
         Args:
@@ -604,12 +615,12 @@ class UnrealCV(object):
             angle: Rotation angle in degrees.
             direction: Direction of rotation, either 'left' or 'right'. Defaults to 'left'.
         """
-        if direction == 'right':
+        if direction == "right":
             clockwise = 1
-        elif direction == 'left':
+        elif direction == "left":
             angle = -angle
             clockwise = -1
-        cmd = f'vbp {object_name} TurnAround {1} {angle} {clockwise}'
+        cmd = f"vbp {object_name} TurnAround {1} {angle} {clockwise}"
         res = self.request(cmd)
         time.sleep(1)
         return res
@@ -620,7 +631,7 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object to stop.
         """
-        cmd = f'vbp {object_name} StopAgent'
+        cmd = f"vbp {object_name} StopAgent"
         return self.request(cmd)
 
     def humanoid_step_forward(self, object_name, duration, direction=0):
@@ -631,7 +642,7 @@ class UnrealCV(object):
             duration: Duration of the step forward movement in seconds.
             direction: Direction of the step forward movement.
         """
-        cmd = f'vbp {object_name} StepForward {duration} {direction}'
+        cmd = f"vbp {object_name} StepForward {duration} {direction}"
         res = self.request(cmd)
         time.sleep(duration)
         return res
@@ -643,7 +654,7 @@ class UnrealCV(object):
             object_name: Name of the humanoid object to set speed.
             speed: Speed to set.
         """
-        cmd = f'vbp {object_name} SetMaxSpeed {speed}'
+        cmd = f"vbp {object_name} SetMaxSpeed {speed}"
         return self.request(cmd)
 
     def humanoid_sit_down(self, object_name):
@@ -652,13 +663,13 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object to sit down.
         """
-        cmd = f'vbp {object_name} SitDown'
+        cmd = f"vbp {object_name} SitDown"
         res = self.request(cmd)
         try:
-            success = str(json.loads(res)['Success'])
-            if success == 'false':
+            success = str(json.loads(res)["Success"])
+            if success == "false":
                 return False
-            elif success == 'true':
+            elif success == "true":
                 return True
         except (ValueError, KeyError, TypeError):
             return False
@@ -670,13 +681,13 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object to sit down.
         """
-        cmd = f'vbp {object_name} StandUp'
+        cmd = f"vbp {object_name} StandUp"
         res = self.request(cmd)
         try:
-            success = str(json.loads(res)['Success'])
-            if success == 'false':
+            success = str(json.loads(res)["Success"])
+            if success == "false":
                 return False
-            elif success == 'true':
+            elif success == "true":
                 return True
         except (ValueError, KeyError, TypeError):
             return False
@@ -688,7 +699,7 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object to get on scooter.
         """
-        cmd = f'vbp {object_name} GetOnScooter'
+        cmd = f"vbp {object_name} GetOnScooter"
         res = self.request(cmd)
         self.clean_garbage()
         return res
@@ -699,7 +710,7 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object to get off scooter.
         """
-        cmd = f'vbp {object_name} GetOffScooter'
+        cmd = f"vbp {object_name} GetOffScooter"
         return self.request(cmd)
 
     def humanoid_pick_up_object(self, humanoid_name, object_name):
@@ -709,13 +720,13 @@ class UnrealCV(object):
             humanoid_name: Name of the humanoid to pick up object.
             object_name: Name of the object to pick up.
         """
-        cmd = f'vbp {humanoid_name} PickUp {object_name}'
+        cmd = f"vbp {humanoid_name} PickUp {object_name}"
         res = self.request(cmd)
         try:
-            success = str(json.loads(res)['Success'])
-            if success == 'false':
+            success = str(json.loads(res)["Success"])
+            if success == "false":
                 return False
-            elif success == 'true':
+            elif success == "true":
                 return True
         except (ValueError, KeyError, TypeError):
             return False
@@ -727,13 +738,13 @@ class UnrealCV(object):
         Args:
             humanoid_name: Name of the humanoid to drop object.
         """
-        cmd = f'vbp {humanoid_name} DropOff'
+        cmd = f"vbp {humanoid_name} DropOff"
         res = self.request(cmd)
         try:
-            success = str(json.loads(res)['Success'])
-            if success == 'false':
+            success = str(json.loads(res)["Success"])
+            if success == "false":
                 return False
-            elif success == 'true':
+            elif success == "true":
                 return True
         except (ValueError, KeyError, TypeError):
             return False
@@ -746,13 +757,13 @@ class UnrealCV(object):
             humanoid_name: Name of the humanoid to enter vehicle.
             vehicle_name: Name of the vehicle to enter.
         """
-        cmd = f'vbp {humanoid_name} EnterVehicle {vehicle_name}'
+        cmd = f"vbp {humanoid_name} EnterVehicle {vehicle_name}"
         res = self.request(cmd)
         try:
-            success = str(json.loads(res)['Success'])
-            if success == 'false':
+            success = str(json.loads(res)["Success"])
+            if success == "false":
                 return False
-            elif success == 'true':
+            elif success == "true":
                 return True
         except (ValueError, KeyError, TypeError):
             return False
@@ -765,13 +776,13 @@ class UnrealCV(object):
             humanoid_name: Name of the humanoid to enter vehicle.
             vehicle_name: Name of the vehicle to exit.
         """
-        cmd = f'vbp {humanoid_name} ExitVehicle {vehicle_name}'
+        cmd = f"vbp {humanoid_name} ExitVehicle {vehicle_name}"
         res = self.request(cmd)
         try:
-            success = str(json.loads(res)['Success'])
-            if success == 'false':
+            success = str(json.loads(res)["Success"])
+            if success == "false":
                 return False
-            elif success == 'true':
+            elif success == "true":
                 return True
         except (ValueError, KeyError, TypeError):
             return False
@@ -784,7 +795,7 @@ class UnrealCV(object):
             humanoid_name: Name of the humanoid to discuss.
             discuss_type: Type of discussion. Can be [0, 1]
         """
-        cmd = f'vbp {humanoid_name} Discussion {discuss_type}'
+        cmd = f"vbp {humanoid_name} Discussion {discuss_type}"
         return self.request(cmd)
 
     def humanoid_argue(self, humanoid_name, argue_type):
@@ -794,7 +805,7 @@ class UnrealCV(object):
             humanoid_name: Name of the humanoid to argue.
             argue_type: Type of arguing. Can be [0, 1]
         """
-        cmd = f'vbp {humanoid_name} Arguing {argue_type}'
+        cmd = f"vbp {humanoid_name} Arguing {argue_type}"
         return self.request(cmd)
 
     def humanoid_listen(self, humanoid_name):
@@ -803,7 +814,7 @@ class UnrealCV(object):
         Args:
             humanoid_name: Name of the humanoid to discuss.
         """
-        cmd = f'vbp {humanoid_name} Listening'
+        cmd = f"vbp {humanoid_name} Listening"
         return self.request(cmd)
 
     def humanoid_wave_to_dog(self, humanoid_name):
@@ -812,7 +823,7 @@ class UnrealCV(object):
         Args:
             humanoid_name: Name of the humanoid to wave to dog.
         """
-        cmd = f'vbp {humanoid_name} Wave2Dog'
+        cmd = f"vbp {humanoid_name} Wave2Dog"
         return self.request(cmd)
 
     def humanoid_directing_path(self, humanoid_name):
@@ -821,7 +832,7 @@ class UnrealCV(object):
         Args:
             humanoid_name: Name of the humanoid to directing path.
         """
-        cmd = f'vbp {humanoid_name} Directing'
+        cmd = f"vbp {humanoid_name} Directing"
         return self.request(cmd)
 
     def humanoid_stop_current_action(self, humanoid_name):
@@ -830,7 +841,7 @@ class UnrealCV(object):
         Args:
             humanoid_name: Name of the humanoid to stop current action.
         """
-        cmd = f'vbp {humanoid_name} StopAction'
+        cmd = f"vbp {humanoid_name} StopAction"
         return self.request(cmd)
 
     def s_set_state(self, object_name, throttle, brake, steering):
@@ -842,7 +853,7 @@ class UnrealCV(object):
             brake: Brake value.
             steering: Steering value.
         """
-        cmd = f'vbp {object_name} SetState {throttle} {brake} {steering}'
+        cmd = f"vbp {object_name} SetState {throttle} {brake} {steering}"
         return self.request(cmd)
 
     def humanoid_set_path(self, object_name, path):
@@ -852,7 +863,7 @@ class UnrealCV(object):
             object_name: Name of the humanoid object.
             path: String of path. Use semicolon to separate waypoints and use comma to separate coordinates. Example: "100,100;200,200;300,300"
         """
-        cmd = f'vbp {object_name} SetPath {path}'
+        cmd = f"vbp {object_name} SetPath {path}"
         return self.request(cmd)
 
     def humanoid_follow_path(self, object_name):
@@ -861,7 +872,7 @@ class UnrealCV(object):
         Args:
             object_name: Name of the humanoid object.
         """
-        cmd = f'vbp {object_name} FollowPath'
+        cmd = f"vbp {object_name} FollowPath"
         return self.request(cmd)
 
     ##############################################################
@@ -873,7 +884,7 @@ class UnrealCV(object):
         Returns:
             List of camera names.
         """
-        cmd = 'vget /cameras'
+        cmd = "vget /cameras"
         return self.request(cmd)
 
     def get_camera_location_multicam(self, camera_ids: list):
@@ -892,7 +903,7 @@ class UnrealCV(object):
         Returns:
             Location (x, y, z) of the camera.
         """
-        cmd = f'vget /camera/{camera_id}/location'
+        cmd = f"vget /camera/{camera_id}/location"
         return self.request(cmd)
 
     def get_camera_rotation(self, camera_id: int):
@@ -904,7 +915,7 @@ class UnrealCV(object):
         Returns:
             Rotation (yaw, pitch, roll) of the camera.
         """
-        cmd = f'vget /camera/{camera_id}/rotation'
+        cmd = f"vget /camera/{camera_id}/rotation"
         return self.request(cmd)
 
     def get_camera_fov(self, camera_id: int):
@@ -916,7 +927,7 @@ class UnrealCV(object):
         Returns:
             Horizontal field of view of the camera.
         """
-        cmd = f'vget /camera/{camera_id}/fov'
+        cmd = f"vget /camera/{camera_id}/fov"
         return self.request(cmd)
 
     def get_camera_resolution(self, camera_id: int):
@@ -928,7 +939,7 @@ class UnrealCV(object):
         Returns:
             Resolution (width, height) of the camera.
         """
-        cmd = f'vget /camera/{camera_id}/size'
+        cmd = f"vget /camera/{camera_id}/size"
         return self.request(cmd)
 
     def set_camera_location(self, camera_id: int, location: tuple):
@@ -938,7 +949,7 @@ class UnrealCV(object):
             camera_id: ID of the camera to set location.
             location: Location (x, y, z) of the camera.
         """
-        cmd = f'vset /camera/{camera_id}/location {location[0]} {location[1]} {location[2]}'
+        cmd = f"vset /camera/{camera_id}/location {location[0]} {location[1]} {location[2]}"
         return self.request(cmd)
 
     def set_camera_rotation(self, camera_id: int, rotation: tuple):
@@ -948,7 +959,7 @@ class UnrealCV(object):
             camera_id: ID of the camera to set rotation.
             rotation: Rotation (pitch, yaw, roll) of the camera.
         """
-        cmd = f'vset /camera/{camera_id}/rotation {rotation[0]} {rotation[1]} {rotation[2]}'
+        cmd = f"vset /camera/{camera_id}/rotation {rotation[0]} {rotation[1]} {rotation[2]}"
         return self.request(cmd)
 
     def set_camera_fov(self, camera_id: int, fov: float):
@@ -958,7 +969,7 @@ class UnrealCV(object):
             camera_id: ID of the camera to set field of view.
             fov: Horizontal field of view of the camera.
         """
-        cmd = f'vset /camera/{camera_id}/fov {fov}'
+        cmd = f"vset /camera/{camera_id}/fov {fov}"
         return self.request(cmd)
 
     def set_camera_resolution(self, camera_id: int, resolution: tuple):
@@ -968,10 +979,10 @@ class UnrealCV(object):
             camera_id: ID of the camera to set resolution.
             resolution: Resolution (width, height) of the camera.
         """
-        cmd = f'vset /camera/{camera_id}/size {resolution[0]} {resolution[1]}'
+        cmd = f"vset /camera/{camera_id}/size {resolution[0]} {resolution[1]}"
         return self.request(cmd)
 
-    def show_img(self, img, title='raw_img'):
+    def show_img(self, img, title="raw_img"):
         """Display an image.
 
         Args:
@@ -1022,11 +1033,11 @@ class UnrealCV(object):
             ret, frame = cap.read()
             if not ret:
                 break
-            cv2.imshow('video', frame)
+            cv2.imshow("video", frame)
             cv2.waitKey(3)
         cap.release()
 
-    def get_image(self, cam_id, viewmode, mode='direct', img_path=None):
+    def get_image(self, cam_id, viewmode, mode="direct", img_path=None):
         """Get image.
 
         Args:
@@ -1037,47 +1048,57 @@ class UnrealCV(object):
         """
         image = None
         try:
-            if mode == 'direct':  # get image from unrealcv in png format
-                if viewmode == 'depth':
-                    cmd = f'vget /camera/{cam_id}/{viewmode} npy'
+            if mode == "direct":  # get image from unrealcv in png format
+                if viewmode == "depth":
+                    cmd = f"vget /camera/{cam_id}/{viewmode} npy"
                     res = self.request(cmd)
                     # Validate response type
                     if isinstance(res, str):
-                        raise ValueError(f'UnrealCV error for camera {cam_id} ({viewmode}): {res}')
+                        raise ValueError(
+                            f"UnrealCV error for camera {cam_id} ({viewmode}): {res}"
+                        )
                     image = self._decode_npy(res)
                 else:
-                    cmd = f'vget /camera/{cam_id}/{viewmode} png'
+                    cmd = f"vget /camera/{cam_id}/{viewmode} png"
                     res = self.request(cmd)
                     # Validate response type
                     if isinstance(res, str):
-                        raise ValueError(f'UnrealCV error for camera {cam_id} ({viewmode}): {res}')
+                        raise ValueError(
+                            f"UnrealCV error for camera {cam_id} ({viewmode}): {res}"
+                        )
                     image = self._decode_png(res)
-            elif mode == 'file':  # save image to file and read it
-                img_path = os.path.join(os.getcwd(), f'{cam_id}-{viewmode}.png')
-                cmd = f'vget /camera/{cam_id}/{viewmode} {img_path}'
+            elif mode == "file":  # save image to file and read it
+                img_path = os.path.join(os.getcwd(), f"{cam_id}-{viewmode}.png")
+                cmd = f"vget /camera/{cam_id}/{viewmode} {img_path}"
                 img_dirs = self.request(cmd)
                 image = cv2.imread(img_dirs)
 
-            elif mode == 'fast':  # get image from unrealcv in bmp format
-                cmd = f'vget /camera/{cam_id}/{viewmode} bmp'
+            elif mode == "fast":  # get image from unrealcv in bmp format
+                cmd = f"vget /camera/{cam_id}/{viewmode} bmp"
                 res = self.request(cmd)
                 # Validate response type
                 if isinstance(res, str):
-                    raise ValueError(f'UnrealCV error for camera {cam_id} ({viewmode}): {res}')
+                    raise ValueError(
+                        f"UnrealCV error for camera {cam_id} ({viewmode}): {res}"
+                    )
                 # print(type(res), len(res) if hasattr(res, '__len__') else res)
                 image = self._decode_bmp(res)
 
-            elif mode == 'file_path':  # save image to file and read it
-                cmd = f'vget /camera/{cam_id}/{viewmode} {img_path}'
+            elif mode == "file_path":  # save image to file and read it
+                cmd = f"vget /camera/{cam_id}/{viewmode} {img_path}"
                 img_dirs = self.request(cmd)
                 image = cv2.imread(img_dirs)
 
             if image is None:
-                raise ValueError(f'Failed to read image with mode={mode}, viewmode={viewmode}')
+                raise ValueError(
+                    f"Failed to read image with mode={mode}, viewmode={viewmode}"
+                )
             return image
 
         except Exception as e:
-            self.logger.error(f'Failed to get image from camera {cam_id} (viewmode={viewmode}, mode={mode}): {str(e)}')
+            self.logger.error(
+                f"Failed to get image from camera {cam_id} (viewmode={viewmode}, mode={mode}): {str(e)}"
+            )
             # Return black image as fallback
             return np.zeros((480, 640, 3), dtype=np.uint8)
 
@@ -1091,7 +1112,9 @@ class UnrealCV(object):
             Decoded image.
         """
         if not isinstance(res, (bytes, bytearray)):
-            raise TypeError(f'Expected bytes for NPY decoding, got {type(res).__name__}')
+            raise TypeError(
+                f"Expected bytes for NPY decoding, got {type(res).__name__}"
+            )
         image = np.load(BytesIO(res))
         eps = 1e-6
         depth_log = np.log(image + eps)
@@ -1118,10 +1141,11 @@ class UnrealCV(object):
             Decoded image.
         """
         if not isinstance(res, (bytes, bytearray)):
-            raise TypeError(f'Expected bytes for PNG decoding, got {type(res).__name__}')
+            raise TypeError(
+                f"Expected bytes for PNG decoding, got {type(res).__name__}"
+            )
         img = np.asarray(PIL.Image.open(BytesIO(res)))
         img = img[:, :, :-1]  # delete alpha channel
-        img = img[:, :, ::-1]  # transpose channel order
         return img
 
     def _decode_bmp(self, res: bytes):
@@ -1131,19 +1155,23 @@ class UnrealCV(object):
         Returns an RGB image of shape (H, W, 3).
         """
         if not isinstance(res, (bytes, bytearray)):
-            raise TypeError(f'BMP decoder expects bytes, got {type(res)}')
+            raise TypeError(f"BMP decoder expects bytes, got {type(res)}")
 
         # --- BMP signature ---
-        if res[:2] != b'BM':
+        if res[:2] != b"BM":
             raise ValueError("Not a BMP file (missing 'BM' signature).")
 
         # --- Parse header (little-endian) ---
-        pixel_offset = struct.unpack_from('<I', res, 10)[0]  # Pixel array start
-        width = struct.unpack_from('<i', res, 18)[0]  # Signed: negative means top-down
-        height_raw = struct.unpack_from('<i', res, 22)[0]  # Signed: negative => top-down
-        bpp = struct.unpack_from('<H', res, 28)[0]  # Bits per pixel
+        pixel_offset = struct.unpack_from("<I", res, 10)[0]  # Pixel array start
+        width = struct.unpack_from("<i", res, 18)[0]  # Signed: negative means top-down
+        height_raw = struct.unpack_from("<i", res, 22)[
+            0
+        ]  # Signed: negative => top-down
+        bpp = struct.unpack_from("<H", res, 28)[0]  # Bits per pixel
         if bpp not in (24, 32):
-            raise NotImplementedError(f'Unsupported BMP bpp: {bpp} (only 24/32 supported)')
+            raise NotImplementedError(
+                f"Unsupported BMP bpp: {bpp} (only 24/32 supported)"
+            )
 
         ch = bpp // 8
         w = int(width)
@@ -1154,10 +1182,12 @@ class UnrealCV(object):
         needed = row_stride * h
         buf = np.frombuffer(res, dtype=np.uint8, count=needed, offset=pixel_offset)
         if buf.size < needed:
-            raise ValueError(f'BMP pixel data too short: {buf.size} < expected {needed}')
+            raise ValueError(
+                f"BMP pixel data too short: {buf.size} < expected {needed}"
+            )
 
         # Reshape to (H, row_stride), then slice off padding to (H, W*ch), then to (H, W, ch)
-        buf = buf.reshape(h, row_stride)[:, :w * ch].reshape(h, w, ch)
+        buf = buf.reshape(h, row_stride)[:, : w * ch].reshape(h, w, ch)
 
         # BMP bottom-up when height_raw > 0; top-down when height_raw < 0
         if height_raw > 0:
@@ -1173,7 +1203,7 @@ class UnrealCV(object):
         Args:
             object_name: UE_Manager object name.
         """
-        cmd = f'vbp {object_name} UpdateObjects'
+        cmd = f"vbp {object_name} UpdateObjects"
         return self.request(cmd)
 
     ##############################################################
@@ -1187,7 +1217,7 @@ class UnrealCV(object):
             pitch: Pitch of the sun. -89 - 89
             yaw: Yaw of the sun. 0 - 360
         """
-        cmd = f'vbp {weather_manager_name} SetSunDirection {pitch} {yaw}'
+        cmd = f"vbp {weather_manager_name} SetSunDirection {pitch} {yaw}"
         return self.request(cmd)
 
     def get_sun_direction(self, weather_manager_name):
@@ -1199,7 +1229,7 @@ class UnrealCV(object):
         Returns:
             Sun direction.
         """
-        cmd = f'vbp {weather_manager_name} GetSunDirection'
+        cmd = f"vbp {weather_manager_name} GetSunDirection"
         return self.request(cmd)
 
     def set_sun_intensity(self, weather_manager_name, intensity):
@@ -1209,7 +1239,7 @@ class UnrealCV(object):
             weather_manager_name: Name of the weather manager.
             intensity: Intensity of the sun. 0 - 100
         """
-        cmd = f'vbp {weather_manager_name} SetSunIntensity {intensity}'
+        cmd = f"vbp {weather_manager_name} SetSunIntensity {intensity}"
         return self.request(cmd)
 
     def get_sun_intensity(self, weather_manager_name):
@@ -1221,7 +1251,7 @@ class UnrealCV(object):
         Returns:
             Sun intensity.
         """
-        cmd = f'vbp {weather_manager_name} GetSunIntensity'
+        cmd = f"vbp {weather_manager_name} GetSunIntensity"
         return self.request(cmd)
 
     def set_fog(self, weather_manager_name, density, distance, falloff):
@@ -1233,7 +1263,7 @@ class UnrealCV(object):
             distance: Distance of the fog. 0 - 5000, cm
             falloff: Falloff of the fog. 0 - 2
         """
-        cmd = f'vbp {weather_manager_name} SetFog {density} {distance} {falloff}'
+        cmd = f"vbp {weather_manager_name} SetFog {density} {distance} {falloff}"
         return self.request(cmd)
 
     def get_fog(self, weather_manager_name):
@@ -1245,7 +1275,7 @@ class UnrealCV(object):
         Returns:
             Fog.
         """
-        cmd = f'vbp {weather_manager_name} GetFog'
+        cmd = f"vbp {weather_manager_name} GetFog"
         return self.request(cmd)
 
     def set_atmosphere(self, weather_manager_name, rayleigh, mie):
@@ -1256,7 +1286,7 @@ class UnrealCV(object):
             rayleigh: RayleighScatteringScale of the atmosphere. 0 - 2.
             mie: MieScatteringScale of the atmosphere. 0 - 5.
         """
-        cmd = f'vbp {weather_manager_name} SetAtmosphere {rayleigh} {mie}'
+        cmd = f"vbp {weather_manager_name} SetAtmosphere {rayleigh} {mie}"
         return self.request(cmd)
 
     def get_atmosphere(self, weather_manager_name):
@@ -1268,5 +1298,5 @@ class UnrealCV(object):
         Returns:
             Atmosphere.
         """
-        cmd = f'vbp {weather_manager_name} GetAtmosphere'
+        cmd = f"vbp {weather_manager_name} GetAtmosphere"
         return self.request(cmd)
