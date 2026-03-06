@@ -28,12 +28,12 @@ class UnrealCV(object):
     including basic operations and traffic system operations.
     """
 
-    def __init__(self, port=9000, ip="127.0.0.1", resolution=(1280, 720)):
+    def __init__(self, port=9000, ip="0.0.0.0", resolution=(1280, 720)):
         """Initialize the UnrealCV client.
 
         Args:
             port: Connection port, defaults to 9000.
-            ip: Connection IP address, defaults to 127.0.0.1.
+            ip: Connection IP address, defaults to 0.0.0.0.
             resolution: Resolution, defaults to (320, 240).
         """
         self.ip = ip

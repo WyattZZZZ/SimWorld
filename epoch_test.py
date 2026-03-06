@@ -5,6 +5,8 @@ import re
 from typing import Dict, Optional
 from PIL import Image
 import json
+import argparse
+import data_recorder
 
 # SimWorld Imports
 from simworld.config import Config
@@ -18,32 +20,38 @@ from simworld.assets_rp.AssetsRP import AssetsRetrieverPlacer as AssetsRP
 # temporary data
 from examples.few_shot import few_shot_data
 
+# ==========================================================
+# 1. 命令行参数解析
+# ==========================================================
+parser = argparse.ArgumentParser(description="SimWorld Parallel Instance")
+parser.add_argument("--round", type=int, default=1, help="当前运行的轮次ID")
+parser.add_argument("--ue_port", type=int, default=9000, help="UnrealCV 后端端口")
+# 如果 vllm_port 已经在 LLM 类内部内置了，这里就不再传给 A2ALLM
+parser.add_argument(
+    "--vllm_port", type=int, default=8000, help="VLLM 端口 (已内置则忽略)"
+)
+args = parser.parse_args()
 
 # Set API Key
 os.environ["GEMINI_API_KEY"] = "AIzaSyC5_M3sNYEaiGD27Lu0Zozsb9ToV8TWOy0"
 os.environ["OPENAI_API_KEY"] = "EMPTY"
 
-
-# --- 0. Initialize Communication (Global) ---
-
-print("Initializing UnrealCV Connection...")
-unrealcv = UnrealCV()
+# ==========================================================
+# 2. 初始化 UnrealCV 连接 (使用传入的端口)
+# ==========================================================
+print(f"[{args.round}] Initializing UnrealCV on Port: {args.ue_port}")
+unrealcv = UnrealCV(port=args.ue_port)
 communicator = Communicator(unrealcv)
 config = Config()
 
-# Test Connection
+# 测试连接
 try:
     status = unrealcv.client.request("vget /unrealcv/status")
     unrealcv.client.request("vrun setinputmodeui")
-    print(f"Connection Status: {status}")
+    print(f"[{args.round}] Connection Status: {status}")
 except Exception as e:
-    print(f"Connection Failed: {e}")
-    print("Please ensure the SimWorld game is running!")
-
-import math
-import re
-
-# --- 1. Define Vector Helper Class ---
+    print(f"[{args.round}] CRITICAL: Connection Failed on port {args.ue_port}: {e}")
+    os._exit(1)
 
 
 class Vector:
@@ -332,7 +340,6 @@ class HideAndSeekEnv:
             self.place_apple_at_agent()
             success = True
             apple_placed = True
-            done = True
 
         elif "found" in action_cleaned:
             global sentence
@@ -447,102 +454,71 @@ class HideAndSeekEnv:
 
 
 def main():
-    # 初始化环境和 agents
     env = HideAndSeekEnv(communicator, config)
     hider_agent = Agent(role="hider")
     seeker_agent = Agent(role="seeker", few_shot_data=few_shot_data)
+    max_hider_steps = 7
+    max_seeker_steps = 25
+    recorder = data_recorder.DataRecorder(round_id=args.round)
     apple_placed = False
     done = False
+    sentence = ""
 
-    # Phase 1: Hider hides the apple
-    print("\n=== PHASE 1: HIDER ===")
     obs = env.reset(role="hider")
-
-    communicator.show_img(obs["ego_view"])
-
-    max_hider_steps = 7
     for i in range(max_hider_steps):
-        if obs["ego_view"] is None:
-            print("Hider cannot see!")
-            break
+        action = hider_agent.action(...)
+        obs, reward, done, success, apple_placed = env.step(action, ...)
 
-        print(f"\nHider Step {i}: Thinking...")
-        action = hider_agent.action(
-            obs, step=max_hider_steps - i, target=env.target, apple_placed=apple_placed
-        )
-        print(f"Hider Decision: {action}")
-
-        communicator.sync_camera_to_actor(
-            env.agents["hider"].id, env.agents["hider"].camera_id, height_offset=120
-        )
-
-        obs, reward, done, success, apple_placed = env.step(
-            action, apple_placed=apple_placed, done=done, role="hider"
-        )
-
-    if not done:
-        env.place_apple_at_agent()
-
-        time.sleep(2)
-
-    # Phase 2: Seeker finds the apple
-    print("\n=== PHASE 2: SEEKER ===")
-    obs = env.reset(role="seeker")
-    done = False
-
-    max_seeker_steps = 25
-    for i in range(max_seeker_steps):
-        if obs["ego_view"] is None:
-            print("Seeker cannot see!")
-            break
-
-        print(f"\nSeeker Step {i}: Thinking...")
-        action = seeker_agent.action(obs, step=max_seeker_steps - i)
-        print(f"Seeker Decision: {action}")
-
-        communicator.sync_camera_to_actor(
-            env.agents["seeker"].id, env.agents["seeker"].camera_id, height_offset=120
-        )
-
-        obs, reward, done, success, apple_placed = env.step(
-            action, done=done, role="seeker"
-        )
+        # 2. 记录 Hider 的每一步
+        recorder.record_step(role="hider", step_num=i, obs=obs, action=action)
 
         if done:
             break
 
-        time.sleep(2)
+    # Phase 2: Seeker
+    obs = env.reset(role="seeker")
+    for i in range(max_seeker_steps):
+        action = seeker_agent.action(...)
+        obs, reward, done, success, _ = env.step(action, ...)
 
-    # 1. 安全创建根目录 (推荐使用 os.makedirs)
+        # 3. 记录 Seeker 的每一步
+        recorder.record_step(role="seeker", step_num=i, obs=obs, action=action)
+
+        if done:
+            break
+
+    # 保存数据：注意文件夹命名
     base_records_dir = "./records"
     os.makedirs(base_records_dir, exist_ok=True)
 
-    # 2. 创建本次运行的子文件夹 (建议使用整数时间戳或格式化日期)
-    folder_name = str(int(time.time()))
+    # 使用 Round ID 和 时间戳组合，确保并行时文件夹唯一
+    folder_name = f"round_{args.round}_{int(time.time())}"
     current_record_path = os.path.join(base_records_dir, folder_name)
     os.makedirs(current_record_path, exist_ok=True)
 
-    # 3. 准备数据
     data = {
+        "round_id": args.round,
+        "ue_port": args.ue_port,
         "location": (obs["position"].x, obs["position"].y),
         "apple_placed": apple_placed,
-        "sentence": sentence,
+        "sentence": sentence if sentence else "Failed",
+        "status": "Finished",
     }
 
-    # 4. 写入 JSON (使用正确的路径变量)
-    json_path = os.path.join(current_record_path, "data.json")
-    with open(json_path, mode="w") as file:
-        json.dump(data, file, indent=4)
+    with open(os.path.join(current_record_path, "data.json"), "w") as f:
+        json.dump(data, f, indent=4)
 
-    # 5. 保存图片 (必须传入路径)
-    if "ego_view" in obs:
-        last = Image.fromarray(cv2.cvtColor(obs["ego_view"], cv2.COLOR_BGR2RGB))
-        img_path = os.path.join(current_record_path, "ego_view.png")
-        last.save(img_path)
-        print(f"Success: Saved data and image to {current_record_path}")
+    if obs["ego_view"] is not None:
+        Image.fromarray(obs["ego_view"]).save(
+            os.path.join(current_record_path, "ego_view.png")
+        )
+
+    print(f"[{args.round}] Task finished. Data saved to {folder_name}")
 
 
 if __name__ == "__main__":
-    main()
-    print("\n=== GAME OVER ===")
-    os._exit(0)
+    try:
+        main()
+    finally:
+        # 强制退出，防止并行进程中的多线程导致僵死
+        os._exit(0)

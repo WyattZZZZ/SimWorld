@@ -1,91 +1,64 @@
 #!/bin/bash
 
-cleanup_ue() {
-  echo "[$(date +%T)] Cleaning UE and Python Processes..."
-  pkill -9 -f "SimWorld"
-  fuser -k 9000/tcp >/dev/null 2>&1
-  sleep 2
-}
-
 # ==========================================================
-# 1. Environment & Conda Setup
+# 配置
 # ==========================================================
-# Define the path to your conda initialization script
-CONDA_PATH="$HOME/miniconda3/etc/profile.d/conda.sh"
-ENV_NAME="simworld"
-
-# Initialize conda for this shell session
-if [ -f "$CONDA_PATH" ]; then
-  source "$CONDA_PATH"
-  conda activate "$ENV_NAME"
-  echo "[$(date +'%H:%M:%S')] Conda environment '$ENV_NAME' activated."
-else
-  echo "ERROR: Conda initialization script not found at $CONDA_PATH"
-  exit 1
-fi
-
-# Set your Python executable path (as backup/verification)
-PYTHON_EXEC=$(which python)
-echo "[$(date +'%H:%M:%S')] Using Python at: $PYTHON_EXEC"
-
-# Global Configs
-export PROJECT_ROOT=$(pwd)
-mkdir -p logs
-mkdir -p records
-
-TOTAL_ROUNDS=1
-UE_PORT=9000
+NUM_PARALLEL=2
+AVAILABLE_GPUS=(3) # 显卡 ID
+BASE_PORT=9000     # 起始端口
 VLLM_PORT=8000
-UE_GPU_ID=1
+UE_EXEC="../simworld-server/SimWorld.sh" # 更新后的相对路径
+CONDA_ENV="simworld"
+
+# 初始化 Conda
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate $CONDA_ENV
+
+# 创建日志目录
+mkdir -p logs
 
 echo "=========================================================="
-echo "EXPERIMENTAL RUN STARTED AT: $(date)"
+echo "Starting Parallel Instances: Pure Host Mode"
+echo "UE Path: $UE_EXEC"
 echo "=========================================================="
 
-# ==========================================================
-# 2. Main Loop
-# ==========================================================
-for ((i = 1; i <= $TOTAL_ROUNDS; i++)); do
-  cleanup_ue
-  echo "[$(date +'%H:%M:%S')] --- Starting ROUND $i ---"
+# 预清理：杀死旧的进程
+echo "Cleaning up old SimWorld processes..."
+pkill -f "SimWorld-Linux-Shipping" || true
+sleep 2
 
-  # A. Launch UE5 Backend
-  echo "[$(date +'%H:%M:%S')] Launching UE5 Engine on GPU $UE_GPU_ID..."
-  CUDA_VISIBLE_DEVICES=$UE_GPU_ID ../simworld-server/SimWorld.sh -RenderOffScreen >logs/ue_round_$i.log 2>&1 &
-  UE_PID=$!
+for ((i = 0; i < NUM_PARALLEL; i++)); do
+  CURRENT_PORT=$((BASE_PORT + i))
+  GPU_ID=${AVAILABLE_GPUS[$((i % ${#AVAILABLE_GPUS[@]}))]}
 
-  # B. Wait for Initialization
-  # Increased to 60s to ensure the UnrealCV plugin starts listening
-  echo "[$(date +'%H:%M:%S')] UE5 PID: $UE_PID. Waiting 40s for map and plugin..."
-  sleep 40
+  echo "[Instance $i] GPU $GPU_ID -> Port $CURRENT_PORT"
 
-  # C. Port Connection Check
-  # Verify port 9000 is open before wasting 40 minutes
-  if ! ss -tuln | grep -q ":$UE_PORT "; then
-    echo "[$(date +'%H:%M:%S')] ERROR: UnrealCV port $UE_PORT is not open. Skipping Round $i."
-    kill -9 $UE_PID >/dev/null 2>&1
-    pkill -f "SimWorld"
-    continue
-  fi
+  # 直接使用相对路径启动 UE
+  # -RemoteControlHttpPort: 覆盖默认 9000 端口
+  CUDA_VISIBLE_DEVICES=$GPU_ID $UE_EXEC \
+    -RenderOffScreen \
+    -Adapter=0 \
+    -Vulkan \
+    -RemoteControlHttpPort=$CURRENT_PORT \
+    -nosound \
+    -messaging >"logs/ue_inst_$i.log" 2>&1 &
 
-  # D. Execute Python Experiment
-  # This will run for approximately 40 minutes
-  echo "[$(date +'%H:%M:%S')] Python started. Running 40-minute logic..."
-  $PYTHON_EXEC epoch_test.py --round $i --ue_port $UE_PORT --vllm_port $VLLM_PORT
+  echo "Waiting for UE instance $i (Port $CURRENT_PORT) to initialize..."
+  sleep 25
 
-  PY_EXIT_CODE=$?
-  echo "[$(date +'%H:%M:%S')] Python process exited with code $PY_EXIT_CODE."
+  # 启动 Python 进程
+  python epoch_test.py \
+    --round "$i" \
+    --ue_port "$CURRENT_PORT" \
+    --vllm_port "$VLLM_PORT" >"logs/py_inst_$i.log" 2>&1 &
 
-  # E. Hard Cleanup
-  # Kill UE5 to reset world state and flush VRAM for next round
-  echo "[$(date +'%H:%M:%S')] Cleaning up processes..."
-  kill -9 $UE_PID >/dev/null 2>&1
-  pkill -f "SimWorld"
-
+  echo "Instance $i started."
   sleep 5
-  echo "----------------------------------------------------------"
 done
 
-echo "=========================================================="
-echo "ALL EXPERIMENTS FINISHED AT: $(date)"
-echo "=========================================================="
+echo "----------------------------------------------------------"
+echo "All processes started. Use 'jobs' to see background tasks."
+echo "UE logs: tail -f logs/ue_inst_0.log"
+echo "----------------------------------------------------------"
+
+wait
